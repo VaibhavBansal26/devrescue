@@ -1,0 +1,13 @@
+torch
+transformers>=4.44
+trl>=0.11
+peft>=0.12
+datasets
+accelerate
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+psycopg2-binary
+pydantic>=2
+pytest
+httpx

@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devrescue
+      POSTGRES_PASSWORD: devrescue
+      POSTGRES_DB: devrescue
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devrescue"]
+      interval: 5s
+      retries: 10
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg2://devrescue:devrescue@db:5432/devrescue
+      DEVRESCUE_ADAPTER_DIR: /app/artifacts/dpo-lora
+    volumes: ["./artifacts:/app/artifacts"]
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+volumes:
+  pgdata:
