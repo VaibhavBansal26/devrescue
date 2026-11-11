@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--batch", type=int, default=2)
     ap.add_argument("--accum", type=int, default=8)
     ap.add_argument("--max_len", type=int, default=1536)
+    ap.add_argument("--max_steps", type=int, default=-1)
     a = ap.parse_args()
 
     train_rows, eval_rows = split(load_pairs(a.data))
@@ -52,6 +53,7 @@ def main():
         save_strategy="epoch",
         logging_steps=10,
         bf16=torch.cuda.is_available(),
+        max_steps=a.max_steps,
         report_to="none",
     )
     # With peft_config and no ref_model, TRL uses the adapter-disabled model as reference.
