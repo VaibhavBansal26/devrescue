@@ -20,7 +20,7 @@ def _load():
     return tok, model.eval()
 
 
-def diagnose(kind: str, text: str, max_new_tokens: int = 400) -> str:
+def diagnose(kind: str, text: str, max_new_tokens: int = 400, temperature: float | None = None) -> str:
     import torch
 
     tok, model = _load()
@@ -33,5 +33,8 @@ def diagnose(kind: str, text: str, max_new_tokens: int = 400) -> str:
     ).to(model.device)
     ids = enc["input_ids"]
     with torch.no_grad():
-        out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False)
+        out = model.generate(
+            **enc, max_new_tokens=max_new_tokens,
+            **({"do_sample": True, "temperature": temperature, "top_p": 0.95} if temperature else {"do_sample": False}),
+        )
     return tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True).strip()

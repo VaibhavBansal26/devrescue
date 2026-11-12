@@ -26,6 +26,8 @@ def main():
     ap.add_argument("--accum", type=int, default=8)
     ap.add_argument("--max_len", type=int, default=1536)
     ap.add_argument("--max_steps", type=int, default=-1)
+    ap.add_argument("--eval", action="store_true", help="eval each epoch (slow / memory-hungry on MPS)")
+    ap.add_argument("--save_steps", type=int, default=25)
     a = ap.parse_args()
 
     train_rows, eval_rows = split(load_pairs(a.data))
@@ -49,8 +51,11 @@ def main():
         per_device_train_batch_size=a.batch,
         gradient_accumulation_steps=a.accum,
         max_length=a.max_len,
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        eval_strategy="epoch" if a.eval else "no",
+        per_device_eval_batch_size=1,
+        save_strategy="steps",
+        save_steps=a.save_steps,
+        save_total_limit=2,
         logging_steps=10,
         bf16=torch.cuda.is_available(),
         max_steps=a.max_steps,
