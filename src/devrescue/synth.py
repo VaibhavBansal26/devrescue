@@ -8,6 +8,7 @@ preferences: templates give narrow coverage, so don't report accuracy measured o
 import argparse
 import json
 import random
+import zlib
 
 # Each scenario: kind, input template, root-cause phrase, fixes, rejected (plausible-but-wrong) answers.
 SCENARIOS = [
@@ -72,26 +73,41 @@ def _fill(tpl: str, vals: dict) -> str:
     return tpl.format(**vals)
 
 
-def make_example(rng: random.Random):
+def _format_answer(cause: str, fixes: list[str]) -> str:
+    return f"ROOT CAUSE: {cause}.\nFIX:\n" + "\n".join(f"{i}. {f}." for i, f in enumerate(fixes, 1))
+
+
+def _hard_negative(sc: dict, prompt: str) -> str:
+    """Well-formatted but WRONG: the diagnosis of a different scenario. Forces DPO to learn
+    correctness, not just style. Uses its own rng so prompts don't depend on hard_frac."""
+    r = random.Random(zlib.crc32(prompt.encode()))
+    other = r.choice([x for x in SCENARIOS if x is not sc])
+    v = {k: r.choice(list(vs)) for k, vs in other["slots"].items()}
+    return _format_answer(_fill(other["cause"], v), [_fill(f, v) for f in other["fixes"]])
+
+
+def make_example(rng: random.Random, hard_frac: float = 0.7):
     sc = rng.choice(SCENARIOS)
     vals = {k: rng.choice(list(v)) for k, v in sc["slots"].items()}
     prompt = f"[{sc['kind']}]\n{_fill(sc['text'], vals)}"
     cause = _fill(sc["cause"], vals)
     fixes = [_fill(f, vals) for f in sc["fixes"]]
-    chosen = f"ROOT CAUSE: {cause}.\nFIX:\n" + "\n".join(f"{i}. {f}." for i, f in enumerate(fixes, 1))
-    rejected = rng.choice(sc["bad"])
+    chosen = _format_answer(cause, fixes)
+    easy = rng.choice(sc["bad"])  # always drawn so prompt sequence is independent of hard_frac
+    hard = random.Random(zlib.crc32(prompt.encode()) + 1).random() < hard_frac
+    rejected = _hard_negative(sc, prompt) if hard else easy
     return {"prompt": prompt, "chosen": chosen, "rejected": rejected}, {
         "kind": sc["kind"], "text": _fill(sc["text"], vals), "root_cause": cause,
     }
 
 
-def generate(n: int, seed: int = 0):
+def generate(n: int, seed: int = 0, hard_frac: float = 0.7):
     rng = random.Random(seed)
     pairs, incidents, seen = [], [], set()
     attempts = 0
     while len(pairs) < n and attempts < n * 20:
         attempts += 1
-        p, inc = make_example(rng)
+        p, inc = make_example(rng, hard_frac)
         if p["prompt"] in seen:  # dedupe
             continue
         seen.add(p["prompt"])
@@ -104,10 +120,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=500)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--hard-frac", type=float, default=0.7, help="share of pairs whose rejected answer is a wrong-but-plausible diagnosis")
     ap.add_argument("--pairs", default="data/pairs.jsonl")
     ap.add_argument("--incidents", default="data/incidents.jsonl")
     a = ap.parse_args()
-    pairs, incs = generate(a.n, a.seed)
+    pairs, incs = generate(a.n, a.seed, a.hard_frac)
     for path, rows in ((a.pairs, pairs), (a.incidents, incs)):
         with open(path, "w") as f:
             f.writelines(json.dumps(r) + "\n" for r in rows)
